@@ -1,0 +1,10 @@
+# Lokale Werkzeug-Einstellungen (nicht für die App nötig)
+.claude/
+
+# Betriebssystem-Dateien
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Datensicherungen aus der App nie hochladen (enthalten persönliche Daten!)
+zyklus-backup-*.json
