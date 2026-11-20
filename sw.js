@@ -1,6 +1,6 @@
 // Service Worker: macht die App offline-fähig.
 // Bei Änderungen an den Dateien die Versionsnummer erhöhen.
-const CACHE = "zyklus-v1";
+const CACHE = "zyklus-v2";
 const ASSETS = [
   "./", "index.html", "styles.css", "app.js", "config.js", "manifest.webmanifest",
   "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png"

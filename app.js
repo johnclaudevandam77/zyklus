@@ -484,7 +484,8 @@
   }
 
   async function rpc(fn, body) {
-    const res = await fetch(`${CFG.supabaseUrl.replace(/\/$/, "")}/rest/v1/rpc/${fn}`, {
+    const base = CFG.supabaseUrl.trim().replace(/\/+$/, "").replace(/\/rest\/v1$/, "");
+    const res = await fetch(`${base}/rest/v1/rpc/${fn}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: CFG.supabaseAnonKey, Authorization: `Bearer ${CFG.supabaseAnonKey}` },
       body: JSON.stringify(body)
