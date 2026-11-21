@@ -92,11 +92,13 @@ Dann <http://localhost:8080> im Browser öffnen.
 |---|---|
 | `index.html` | Grundgerüst der App |
 | `app.js` | Logik: Zyklusberechnung, Einträge, Verschlüsselung, Teilen |
+| `i18n.js` | Alle Texte auf Deutsch und Englisch |
+| `symptoms.js` | Symptome mit ihren kleinen Bildern |
 | `styles.css` | Design (hell & dunkel, iPhone & iPad) |
 | `config.js` | Supabase-Zugangsdaten für die Partner-Freigabe |
 | `sw.js` | Offline-Funktion |
 | `manifest.webmanifest`, `icons/` | App-Name und Icons für den Home-Bildschirm |
 | `supabase/schema.sql` | Datenbank für die Partner-Freigabe |
 
-Wenn du Dateien änderst, erhöhe in `sw.js` die Versionsnummer (`zyklus-v1` → `zyklus-v2`),
+Wenn du Dateien änderst, erhöhe in `sw.js` die Versionsnummer (z. B. `zyklus-v3` → `zyklus-v4`),
 damit installierte Apps das Update sicher bekommen.
