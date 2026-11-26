@@ -11,8 +11,15 @@
   const SYNC_READY = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
   const I18N = window.ZYKLUS_I18N;
   const SYMPTOMS = window.ZYKLUS_SYMPTOMS;
+  const SYMPTOM_GROUPS = window.ZYKLUS_SYMPTOM_GROUPS;
+  const PRIVATE_GROUPS = new Set(SYMPTOM_GROUPS.filter((g) => g.private).map((g) => g.key));
+  const isPrivateSymptom = (id) => { const s = SYMPTOMS.find((x) => x.id === id); return !!s && PRIVATE_GROUPS.has(s.group); };
+  // Eigene Einträge werden als "eigen:Name" gespeichert
+  const CUSTOM_PREFIX = "eigen:";
+  const isCustom = (id) => String(id).startsWith(CUSTOM_PREFIX);
+  const customName = (id) => String(id).slice(CUSTOM_PREFIX.length);
   const MOODS = [
-    ["gut", "😊"], ["ruhig", "😌"], ["neutral", "😐"], ["traurig", "😢"],
+    ["gut", "😊"], ["energie", "⚡"], ["ruhig", "😌"], ["neutral", "😐"], ["traurig", "😢"],
     ["gereizt", "😤"], ["aengstlich", "😰"], ["erschoepft", "😴"]
   ];
 
@@ -67,7 +74,8 @@
       prefs: { lang: null, theme: "system", festive: true }, // lang null = Gerätesprache
       settings: { cycleLength: 28, periodLength: 5, name: "" },
       days: {},   // "YYYY-MM-DD": { flow, symptoms[], moods[], notes[] }
-      share: { enabled: false, id: null, key: null, secret: null, shareSymptoms: true, shareNotes: true, lastSync: null, error: null },
+      custom: [], // eigene Symptom-Einträge (Namen)
+      share: { enabled: false, id: null, key: null, secret: null, shareSymptoms: true, shareNotes: true, shareSex: false, lastSync: null, error: null },
       partner: { id: null, key: null, data: null, fetched: null, error: null }
     };
   }
@@ -76,7 +84,7 @@
       const raw = localStorage.getItem(STORE_KEY);
       if (!raw) return defaultState();
       const s = JSON.parse(raw); const d = defaultState();
-      return { ...d, ...s, prefs: { ...d.prefs, ...s.prefs }, settings: { ...d.settings, ...s.settings }, share: { ...d.share, ...s.share }, partner: { ...d.partner, ...s.partner }, days: normalizeDays(s.days) };
+      return { ...d, ...s, prefs: { ...d.prefs, ...s.prefs }, settings: { ...d.settings, ...s.settings }, share: { ...d.share, ...s.share }, partner: { ...d.partner, ...s.partner }, days: normalizeDays(s.days), custom: Array.isArray(s.custom) ? s.custom : [] };
     } catch { return defaultState(); }
   }
   let state = load();
@@ -84,7 +92,7 @@
     try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch { toast(t("saveFailed")); }
   }
 
-  const ui = { tab: "today", calMonth: null, noteFilter: "all", draftVis: "private", drafts: {} };
+  const ui = { tab: "today", calMonth: null, noteFilter: "all", draftVis: "private", drafts: {}, symQuery: "" };
 
   function getDay(k) { return state.days[k] || { flow: 0, symptoms: [], moods: [], notes: [] }; }
   function setDay(k, patch) {
@@ -118,7 +126,14 @@
   };
   const fmtTime = (ts) => new Date(ts).toLocaleString(t("locale"));
   const moodLabel = (id) => t(`mood.${id}`);
-  const symptomLabel = (id) => { const s = SYMPTOMS.find((x) => x.id === id); return s ? t(`sym.${s.key}`) : esc(id); };
+  const symptomLabel = (id) => {
+    if (isCustom(id)) return esc(customName(id));
+    const s = SYMPTOMS.find((x) => x.id === id); return s ? t(`sym.${s.key}`) : esc(id);
+  };
+  const symptomArt = (id) => {
+    if (isCustom(id)) return window.ZYKLUS_CUSTOM_ART(customName(id));
+    const s = SYMPTOMS.find((x) => x.id === id); return s ? s.art : "";
+  };
 
   // ---------- Design ----------
   function applyTheme() {
@@ -240,6 +255,7 @@
       ? { today: renderPartnerToday, calendar: renderCalendar, notes: renderPartnerNotes, settings: renderSettings }
       : { today: renderToday, calendar: renderCalendar, notes: renderNotes, share: renderShare, settings: renderSettings };
     view.innerHTML = R[ui.tab]();
+    filterPickers();
   }
 
   function langSwitch(cls = "") {
@@ -394,11 +410,11 @@
   function dayEditor(k, { showFlow = true } = {}) {
     const d = getDay(k);
     return `
-      ${showFlow ? `<h3>${t("bleeding")}</h3><div class="seg">${t("flows").map((f, i) => `<button class="${d.flow === i ? "on" : ""}" data-action="flow" data-date="${k}" data-v="${i}">${f}</button>`).join("")}</div>` : ""}
+      ${showFlow ? `<h3>${t("bleeding")}</h3><div class="seg five">${t("flows").map((f, i) => `<button class="${d.flow === i ? "on" : ""}" data-action="flow" data-date="${k}" data-v="${i}">${f}</button>`).join("")}</div>` : ""}
       <h3>${t("moods")} <span class="hint">${t("multiple")}</span></h3>
       <div class="moods">${MOODS.map(([id, e]) => { const on = d.moods.includes(id); return `<button class="mood ${on ? "on" : ""}" aria-pressed="${on}" data-action="mood" data-date="${k}" data-v="${id}"><span class="e">${e}</span>${moodLabel(id)}</button>`; }).join("")}</div>
       <h3>${t("symptoms")} <span class="hint">${t("multiple")}</span></h3>
-      <div class="symptoms">${SYMPTOMS.map((s) => { const on = d.symptoms.includes(s.id); return `<button class="symptom ${on ? "on" : ""}" aria-pressed="${on}" data-action="symptom" data-date="${k}" data-v="${esc(s.id)}">${s.art}<span>${t(`sym.${s.key}`)}</span></button>`; }).join("")}</div>
+      ${symptomPicker(k, d)}
       <h3>${t("notesThoughts")}</h3>
       ${d.notes.length ? `<div>${d.notes.map((n) => noteHtml(n, k, true)).join("")}</div>` : ""}
       <textarea data-draft="${k}" placeholder="${t("notePlaceholder")}">${esc(ui.drafts[k] || "")}</textarea>
@@ -411,12 +427,45 @@
       </div>`;
   }
 
+  // Symptom-Auswahl: Suche, Kategorie-Reiter und Abschnitte
+  const normText = (s) => String(s).replace(/­/g, "").toLowerCase();
+  function symptomPicker(k, d) {
+    const tile = (s) => {
+      const on = d.symptoms.includes(s.id), label = s.label || t(`sym.${s.key}`);
+      return `<button class="symptom ${on ? "on" : ""}" aria-pressed="${on}" data-action="symptom" data-date="${k}" data-v="${esc(s.id)}" data-s="${esc(normText(`${label} ${s.id} ${t(`grp.${s.group}`)}`))}">${s.art}<span>${label}</span></button>`;
+    };
+    // Eigene Einträge: gespeicherte Namen plus alles, was an diesem Tag schon eingetragen ist
+    const customIds = [...new Set([...state.custom.map((n) => CUSTOM_PREFIX + n), ...d.symptoms.filter(isCustom)])];
+    const customItems = customIds.map((id) => ({ id, group: "custom", label: esc(customName(id)), art: window.ZYKLUS_CUSTOM_ART(customName(id)) }));
+    const groups = [...SYMPTOM_GROUPS, { key: "custom", items: customItems }];
+    const addTile = `<button class="symptom add" data-action="custom-add" data-date="${k}" data-s="${esc(normText(`${t("addCustom")} ${t("grp.custom")}`))}">${window.ZYKLUS_ADD_ART}<span>${t("addCustom")}</span></button>`;
+    return `<div class="sym-picker">
+      <input type="search" class="sym-search" data-symsearch placeholder="🔍 ${t("symSearch")}" value="${esc(ui.symQuery)}" autocomplete="off" enterkeyhint="search">
+      <div class="pills">${groups.map((g) => `<button class="pill" data-action="sym-jump" data-v="${g.key}">${t(`grp.${g.key}`)}</button>`).join("")}</div>
+      ${groups.map((g) => `<section class="sym-sec" data-sec="${g.key}"><h4>${t(`grp.${g.key}`)}</h4><div class="symptoms">${g.items.map(tile).join("")}${g.key === "custom" ? addTile : ""}</div></section>`).join("")}
+      <p class="muted small sym-empty" hidden>${t("noResults")}</p>
+    </div>`;
+  }
+  function filterPickers() {
+    const q = normText(ui.symQuery.trim());
+    document.querySelectorAll(".sym-picker").forEach((p) => {
+      let any = false;
+      p.querySelectorAll(".sym-sec").forEach((sec) => {
+        let n = 0;
+        sec.querySelectorAll(".symptom").forEach((b) => { const hit = !q || b.dataset.s.includes(q); b.hidden = !hit; if (hit) n++; });
+        sec.hidden = n === 0; if (n) any = true;
+      });
+      p.querySelector(".sym-empty").hidden = any;
+      p.querySelector(".pills").hidden = !!q;
+    });
+  }
+
   // Nur-Lese-Anzeige von Stimmungen und Symptomen für die Partner-Ansicht
   function sharedDayHtml(info, withHeadings) {
     const moods = moodsOf(info).map((id) => MOODS.find((m) => m[0] === id)).filter(Boolean);
     const symptoms = (info && info.symptoms) || [];
     const moodHtml = moods.length ? `<div class="chips">${moods.map(([id, e]) => `<span class="chip static">${e} ${moodLabel(id)}</span>`).join("")}</div>` : "";
-    const symHtml = symptoms.length ? `<div class="symptoms">${symptoms.map((id) => { const s = SYMPTOMS.find((x) => x.id === id); return `<span class="symptom static">${s ? s.art : ""}<span>${symptomLabel(id)}</span></span>`; }).join("")}</div>` : "";
+    const symHtml = symptoms.length ? `<div class="symptoms">${symptoms.map((id) => `<span class="symptom static">${symptomArt(id)}<span>${symptomLabel(id)}</span></span>`).join("")}</div>` : "";
     return (moodHtml ? `${withHeadings || symHtml ? `<h3>${t("moods")}</h3>` : ""}${moodHtml}` : "") + (symHtml ? `${withHeadings || moodHtml ? `<h3>${t("symptoms")}</h3>` : ""}${symHtml}` : "");
   }
 
@@ -505,6 +554,7 @@
     sheet.innerHTML = `<div class="grab"></div>${html}`;
     sheet.hidden = false; $("#sheet-backdrop").hidden = false;
     document.body.style.overflow = "hidden";
+    filterPickers();
   }
   function refreshSheet() { const s = $("#sheet"); if (!s.hidden && s.dataset.date) openDaySheet(s.dataset.date); }
   function closeSheet() { $("#sheet").hidden = true; $("#sheet-backdrop").hidden = true; document.body.style.overflow = ""; render(); }
@@ -550,6 +600,7 @@
       <div class="card list">
         <div class="item"><div>${t("shareCycle")}<div class="small muted">${t("shareCycleSub")}</div></div><span class="badge pub">${t("on")}</span></div>
         ${sw("share-symptoms", s.shareSymptoms, t("shareSym"), t("shareSymSub"))}
+        ${sw("share-sex", s.shareSex, t("shareSex"), t("shareSexSub"))}
         ${sw("share-notes", s.shareNotes, t("shareNotes"), t("shareNotesSub"))}
       </div>
       <div class="card">
@@ -564,7 +615,9 @@
     for (const [k, d] of Object.entries(state.days)) {
       if (d.flow > 0) { periodDays.push(k); flows[k] = d.flow; }
       // "mood" bleibt zusätzlich drin, damit noch nicht aktualisierte Partner-Apps weiter funktionieren
-      if (state.share.shareSymptoms && (d.symptoms.length || d.moods.length)) days[k] = { symptoms: d.symptoms, moods: d.moods, mood: d.moods[0] || null };
+      // Sensible Einträge (Sex, Substanzen, Tests …) nur, wenn sie das ausdrücklich erlaubt
+      const symptoms = state.share.shareSex ? d.symptoms : d.symptoms.filter((id) => !isPrivateSymptom(id));
+      if (state.share.shareSymptoms && (symptoms.length || d.moods.length)) days[k] = { symptoms, moods: d.moods, mood: d.moods[0] || null };
       if (state.share.shareNotes) for (const n of d.notes) if (n.public) notes.push({ id: n.id, date: k, text: n.text, ts: n.ts, public: true });
     }
     return {
@@ -713,6 +766,9 @@
         <div class="item"><div>${t("avgCycle")}<div class="small muted">${t("autoCalc")}</div></div><input type="number" min="18" max="60" data-action="set-cycle" value="${s.cycleLength}"></div>
         <div class="item"><span>${t("avgPeriod")}</span><input type="number" min="1" max="12" data-action="set-period" value="${s.periodLength}"></div>
       </div>
+      <div class="card"><h2>${t("customList")}</h2>
+        ${state.custom.length ? `<div class="list">${state.custom.map((n) => `<div class="item"><span>${esc(n)}</span><button class="icon-btn" data-action="custom-remove" data-v="${esc(n)}">${t("remove")}</button></div>`).join("")}</div>` : `<p class="muted small">${t("customNone")}</p>`}
+      </div>
       <div class="card"><h2>${t("backup")}</h2>
         <p class="muted small">${t("backupText")}</p>
         <div class="row"><button class="btn" data-action="export">${t("export")}</button><button class="btn" data-action="import">${t("import")}</button></div>
@@ -787,6 +843,25 @@
       setDay(k, { notes: d.notes.filter((n) => n.id !== el.dataset.id) });
       keepScroll(rerender);
     },
+    "custom-add": (el) => {
+      const name = (prompt(t("customPrompt")) || "").trim().replace(/\s+/g, " ").slice(0, 40);
+      if (!name) return;
+      if (state.custom.some((n) => n.toLowerCase() === name.toLowerCase())) return toast(t("customExists"));
+      state.custom.push(name);
+      const k = el.dataset.date, d = getDay(k);
+      setDay(k, { symptoms: d.symptoms.includes(CUSTOM_PREFIX + name) ? d.symptoms : [...d.symptoms, CUSTOM_PREFIX + name] });
+      keepScroll(rerender);
+    },
+    "custom-remove": (el) => {
+      const name = el.dataset.v;
+      if (!confirm(t("confirmRemoveCustom", { name }))) return;
+      state.custom = state.custom.filter((n) => n !== name);
+      save(); keepScroll(render);
+    },
+    "sym-jump": (el) => {
+      const sec = el.closest(".sym-picker").querySelector(`[data-sec="${el.dataset.v}"]`);
+      if (sec) sec.scrollIntoView({ behavior: "smooth", block: "start" });
+    },
     "note-filter": (el) => { ui.noteFilter = el.dataset.v; render(); },
     "open-day": (el) => openDaySheet(el.dataset.date),
     "sheet-close": closeSheet,
@@ -818,7 +893,7 @@
     "share-sync": () => pushShare(true),
     "partner-refresh": () => fetchPartner(true),
     export: () => {
-      const blob = new Blob([JSON.stringify({ app: "zyklus", v: 2, exported: new Date().toISOString(), settings: state.settings, days: state.days }, null, 2)], { type: "application/json" });
+      const blob = new Blob([JSON.stringify({ app: "zyklus", v: 2, exported: new Date().toISOString(), settings: state.settings, days: state.days, custom: state.custom }, null, 2)], { type: "application/json" });
       const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `zyklus-backup-${todayKey()}.json`;
       document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     },
@@ -850,6 +925,11 @@
   document.addEventListener("input", (e) => {
     const k = e.target.dataset && e.target.dataset.draft;
     if (k) ui.drafts[k] = e.target.value;
+    if (e.target.matches && e.target.matches("[data-symsearch]")) {
+      ui.symQuery = e.target.value;
+      document.querySelectorAll("[data-symsearch]").forEach((i) => { if (i !== e.target) i.value = ui.symQuery; });
+      filterPickers();
+    }
   });
 
   document.addEventListener("change", (e) => {
@@ -857,6 +937,7 @@
     if (a === "set-festive") { state.prefs.festive = el.checked; save(); applyTheme(); keepScroll(render); }
     else if (a === "share-symptoms") { state.share.shareSymptoms = el.checked; save(); scheduleSync(); }
     else if (a === "share-notes") { state.share.shareNotes = el.checked; save(); scheduleSync(); }
+    else if (a === "share-sex") { state.share.shareSex = el.checked; save(); scheduleSync(); }
     else if (a === "set-name") { state.settings.name = el.value.trim().slice(0, 40); save(); scheduleSync(); }
     else if (a === "set-cycle") { state.settings.cycleLength = clamp(+el.value, 18, 60, state.settings.cycleLength); el.value = state.settings.cycleLength; save(); scheduleSync(); }
     else if (a === "set-period") { state.settings.periodLength = clamp(+el.value, 1, 12, state.settings.periodLength); el.value = state.settings.periodLength; save(); scheduleSync(); }
@@ -869,6 +950,7 @@
           if (!confirm(t("confirmImport"))) return;
           state.days = { ...state.days, ...normalizeDays(data.days) };
           if (data.settings) state.settings = { ...state.settings, ...data.settings };
+          if (Array.isArray(data.custom)) state.custom = [...new Set([...state.custom, ...data.custom.map(String)])];
           save(); scheduleSync(); render(); toast(t("imported"));
         } catch { toast(t("badBackup")); }
       };

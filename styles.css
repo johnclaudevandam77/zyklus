@@ -155,8 +155,21 @@ h3 .hint { font-size: 12px; font-weight: 400; text-transform: none; letter-spaci
 .symptom.on svg { transform: scale(1.07); }
 .symptom.static { cursor: default; }
 
+/* Symptom-Auswahl: Suche, Reiter, Abschnitte */
+.sym-search { width: 100%; border: 1.5px solid var(--line); background: var(--bg); outline: none; border-radius: 999px; padding: 10px 16px; margin-bottom: 10px; -webkit-appearance: none; appearance: none; }
+.pills { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin: 0 -2px 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.pills::-webkit-scrollbar { display: none; }
+.pill { flex: none; border: 1.5px solid var(--line); background: var(--card); border-radius: 999px; padding: 7px 14px; font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text); }
+.pill:active { background: var(--accent-soft); border-color: var(--accent); }
+.sym-sec { scroll-margin-top: calc(env(safe-area-inset-top) + 12px); }
+.sym-sec h4 { margin: 14px 0 8px; font-size: 13px; letter-spacing: .05em; text-transform: uppercase; }
+.symptom[hidden], .sym-sec[hidden], .pills[hidden] { display: none; }
+
 /* Design & Sprache */
 .seg.two { grid-template-columns: repeat(2, 1fr); }
+.seg.five { grid-template-columns: repeat(5, 1fr); }
+.seg.five button { padding: 10px 2px; font-size: 13px; }
+.symptom.add { border: 1.5px dashed var(--line); background: transparent; }
 .seg.three { grid-template-columns: repeat(3, 1fr); }
 .pref-label { font-size: 14px; color: var(--muted); margin: 12px 0 6px; }
 .pref-label:first-of-type { margin-top: 0; }
